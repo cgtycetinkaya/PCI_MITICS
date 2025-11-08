@@ -121,7 +121,7 @@ for(i in 1:h){
   Sgm<-Talf^2*VAR[1,1]+Ttht^2*VAR[2,2]+2*Talf*Ttht*VAR[1,2]
   ACI[i,]<-c(exp(log(CS_mle[i])+qnorm(0.025)*sqrt(Sgm)*CS_mle[i]^(-1)),exp(log(CS_mle[i])-qnorm(0.025)*sqrt(Sgm)*CS_mle[i]^(-1)))
   #----------------------------------------------------------------------------#
-  ####-----MLE Method--------##########
+  ####-----MPS Method--------##########
   #----------------------------------------------------------------------------#
   zo<-c(0.0001,z[which(nu==1)],Inf);cnrd<-z[which(nu==0)];ri<-0
   for(j in 2:(length(diff(zo))+1))  ri[j-1]<-length(which(cnrd>zo[j-1]&cnrd<=zo[j]))
