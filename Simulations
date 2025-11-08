@@ -1,19 +1,19 @@
-library(lamW);library(matrixStats);library(numDeriv) 
-library(beepr);library(EnvStats);library(writexl)
-
-h<-1000;BOOT<-500;MCMC<-3500;thinning<-seq(503,3500,3);pp1<--0.5;pp2<-0.5
-
-n<-80;m<-5 #Sample Sizes 20 40 60 80 
+#Required Packages
+library(lamW);library(matrixStats);library(numDeriv);library(EnvStats)
+#----------------------------------------------------------------------------#
+#----------------------------------------------------------------------------#
+#----------------------------------------------------------------------------#
+h<-100;BOOT<-500;MCMC<-3500;thinning<-seq(503,3500,3) #Iteration Numbers
 al<-4;th<-2 #Actual Parameter Values
-
-TPT<-0.10 #Right-Censoring Rate For T_2m  0.10 0.20
-
-L0<-0.5;U0<-2.5;TT<-(U0-L0)/2+L0 #Limit Values of PCI
-a<-al;c<-th;b<-d<-1
-moment <- function(r, alpha, theta) {
+pp1<--0.5;pp2<-0.5 #Linex-parameters
+n<-60;m<-5 #Sample Sizes 20 40 60 80 
+TPT<-0.05 #Right-Censoring Rate For (T_2m)  0.05, 0.10 and 0.20 is used
+L0<-0.5;U0<-2.5;TT<-(U0-L0)/2+L0 #Limit Values for PCI
+a<-al;c<-th;b<-d<-1 #hyperparameters
+moment<-function(r, alpha, theta) { 
   theta^(r / alpha) / (1 + theta) * (theta * gamma(1 - r / alpha) + gamma(2 - r / alpha))
-}
-Cs_function <- function(params, U = U0, L = L0, TA = TT) {
+} #Moments for GILD
+Cs_function<-function(params, U = U0, L = L0, TA = TT) {
   alpha <- params[1]
   theta <- params[2]
   
@@ -30,8 +30,8 @@ Cs_function <- function(params, U = U0, L = L0, TA = TT) {
   
   Cs <- numerator / denominator
   return(Cs)
-}
-floor_dec <- function(x, level=1) round(x - 5*10^(-level-1), level)
+} #PCI Function (CS)
+floor_dec <-function(x, level=1) round(x - 5*10^(-level-1), level) #Function Devide Time Points As MITICS
 Mu<-moment(1,al,th);Varyns<-moment(2,al,th)-Mu^2;stdv<-sqrt(Varyns);M3<-moment(3,al,th)-3*Mu*moment(2,al,th)+2*Mu^3
 CS0<-min((U0-Mu),(Mu-L0))/(3*sqrt(Varyns+(Mu-TT)^2+abs(M3/stdv)))
 loglik<-function(par){
@@ -44,12 +44,12 @@ loglik<-function(par){
                   D5*log(((1+tt+tt*T10^(-aa))/(1+tt))*exp(-tt*T10^(-aa))-((1+tt+tt*T9^(-aa))/(1+tt))*exp(-tt*T9^(-aa)))+
                   DM*log(1-((1+tt+tt*T10^(-aa))/(1+tt))*exp(-tt*T10^(-aa)))))
   return(-lik)
-} #Log-likelihood Function 
+} #Log-LF
 llik_MPS<-function(par){
   aa<-par[1];tt<-par[2]
   lik<-sum((ri+1)*(log(((1+tt+tt*za^(-aa))/(1+tt))*exp(-tt*za^(-aa))-((1+tt+tt*zb^(-aa))/(1+tt))*exp(-tt*zb^(-aa)))))
   return(-lik)
-}
+} #Log-MPSF 
 fb_alpha1<-function(a0){
   Ttk<-MH_tht[jj-1]
   xi1<-(((1+Ttk+Ttk*T2^(-a0))*exp(-Ttk*T2^(-a0))-(1+Ttk+Ttk*T1^(-a0))*exp(-Ttk*T1^(-a0)))^D1)*
@@ -59,7 +59,7 @@ fb_alpha1<-function(a0){
     (((1+Ttk+Ttk*T10^(-a0))*exp(-Ttk*T10^(-a0))-(1+Ttk+Ttk*T9^(-a0))*exp(-Ttk*T9^(-a0)))^D5)*
     ((1+Ttk-(1+Ttk+Ttk*T10^(-a0))*exp(-Ttk*T10^(-a0)))^DM)
   (a0^(a+sum(nu)-1))*exp(-b*a0-Ttk*sum(nu*z^(-a0)))*prod((z^(-a0-1)*(1+z^(-a0)))^nu)*prod(xi1^(1-nu))
-}
+} # Posterior of Alpha Based of LF
 fb_theta1<-function(tt0){
   Aal<-MH_alp[jj]
   xi2<-(((1+tt0+tt0*T2^(-Aal))*exp(-tt0*T2^(-Aal))-(1+tt0+tt0*T1^(-Aal))*exp(-tt0*T1^(-Aal)))^D1)*
@@ -70,19 +70,20 @@ fb_theta1<-function(tt0){
     ((1+tt0-(1+tt0+tt0*T10^(-Aal))*exp(-tt0*T10^(-Aal)))^DM)
   (tt0^(c+2*sum(nu)-1))*prod(xi2^(1-nu))*
     exp(-tt0*(d+sum(nu*z^(-Aal))))*(1+tt0)^(-sum(nu)-sum((1-nu)*(DM+D1+D2+D3+D4+D5)))
-}
+} # Posterior of Theta Based of LF
 fb_alpha2<-function(aa){
   ttk<-MH_tt[uu-1]
   x01<-((1/(1+ri))^(1+ri))*(((1+ttk+ttk*za^(-aa))/(1+ttk))*exp(-ttk*za^(-aa))-((1+ttk+ttk*zb^(-aa))/(1+ttk))*exp(-ttk*zb^(-aa)))^(1+ri)
   (aa^(a-1))*exp(-b*aa)*prod(x01)
-}
+} # Posterior of Alpha Based of MPS
 fb_theta2<-function(tt){
   aal<-MH_aa[uu]
   x02<-((1/(1+ri))^(1+ri))*(((1+tt+tt*za^(-aal))/(1+tt))*exp(-tt*za^(-aal))-((1+tt+tt*zb^(-aal))/(1+tt))*exp(-tt*zb^(-aal)))^(1+ri)
   (tt^(c-1))*exp(-d*tt)*prod(x02)
-}
+} # Posterior of Alpha Based of MPS
 
-CS_mle<-CS_mps<-CS_bys1<-CS_bys2<-CS_bys3<-CS_bys1b<-CS_bys2b<-CS_bys3b<-0;ACI<-ACI_MPS<-HPD1<-HPD2<-matrix(0,h,2)
+CS_mle<-CS_mps<-CS_bys1<-CS_bys2<-CS_bys3<-CS_bys1b<-CS_bys2b<-CS_bys3b<-0 #Empty Vectors
+ACI<-ACI_MPS<-HPD1<-HPD2<-matrix(0,h,2) #Empty Matrices
 
 for(i in 1:h){
   
@@ -101,7 +102,10 @@ for(i in 1:h){
   Ind5<-c(which(z>T7&z<T8));D4<-rep(0,n);D4[Ind5]<-1
   Ind6<-c(which(z>T9&z<T10));D5<-rep(0,n);D5[Ind6]<-1
   Ind7<-c(which(z>T10));DM<-rep(0,n);DM[Ind7]<-1
-  tryCatch({      
+  #----------------------------------------------------------------------------#
+  ####-----MLE Method--------##########
+  #----------------------------------------------------------------------------#
+    tryCatch({      
     OPT<-optim(c(al,th),loglik,hessian=TRUE) #MLEs
     VAR<-solve(OPT$hessian)
   }, error=function(e){})
@@ -116,8 +120,9 @@ for(i in 1:h){
   }, error=function(e){})
   Sgm<-Talf^2*VAR[1,1]+Ttht^2*VAR[2,2]+2*Talf*Ttht*VAR[1,2]
   ACI[i,]<-c(exp(log(CS_mle[i])+qnorm(0.025)*sqrt(Sgm)*CS_mle[i]^(-1)),exp(log(CS_mle[i])-qnorm(0.025)*sqrt(Sgm)*CS_mle[i]^(-1)))
-  
-  #MPS ESTIMATOR###
+  #----------------------------------------------------------------------------#
+  ####-----MLE Method--------##########
+  #----------------------------------------------------------------------------#
   zo<-c(0.0001,z[which(nu==1)],Inf);cnrd<-z[which(nu==0)];ri<-0
   for(j in 2:(length(diff(zo))+1))  ri[j-1]<-length(which(cnrd>zo[j-1]&cnrd<=zo[j]))
   zb<-zo[-length(zo)];za<-zo[-1] 
@@ -135,7 +140,9 @@ for(i in 1:h){
   }, error=function(e){})
   Sgm_mps<-Talf_m^2*VAR_MPS[1,1]+Ttht_m^2*VAR_MPS[2,2]+2*Talf_m*Ttht_m*VAR_MPS[1,2]
   ACI_MPS[i,]<-c(exp(log(CS_mps[i])+qnorm(0.025)*sqrt(Sgm_mps)*CS_mps[i]^(-1)),exp(log(CS_mps[i])-qnorm(0.025)*sqrt(Sgm_mps)*CS_mps[i]^(-1)))
-  
+  #----------------------------------------------------------------------------#
+  ####-----Bayesian Inference Based on LF--------##########
+  #----------------------------------------------------------------------------#
   CS_gibbs<-CS_Lnx1<-CS_Lnx2<-0;MH_alp<-al_mle;MH_tht<-th_mle;Valp<-sqrt(VAR[1,1]);Vtht<-sqrt(VAR[2,2])
   
   for(jj in 2:MCMC){
@@ -163,9 +170,10 @@ for(i in 1:h){
   CS_bys2[i]<-(-1/pp1)*log(mean(CS_Lnx1))
   CS_bys3[i]<-(-1/pp2)*log(mean(CS_Lnx2))
   HPD1[i,]<-quantile(CS_gibbs,c(0.025,0.975))
-  
+  #----------------------------------------------------------------------------#
+  ####-----Bayesian Inference Based on MPS--------##########
+  #----------------------------------------------------------------------------#
   MH_aa<-al_mps;MH_tt<-th_mps;CS_gibbs2<-CS_Lnx1b<-CS_Lnx2b<-0;Valp2<-sqrt(VAR_MPS[1,1]);Vtht2<-sqrt(VAR_MPS[2,2])
-  
   for(uu in 2:MCMC){
     tryCatch({      
       v0c<-MH_aa[uu-1];v1c<-abs(rnorm(1,v0c,Valp2));rndmc<-runif(1)
@@ -194,12 +202,14 @@ for(i in 1:h){
   HPD2[i,]<-quantile(CS_gibbs2,c(0.025,0.975))
   print(i)
 }
-
+#----------------------------------------------------------------------------#
+#-----------------------------RESULTS----------------------------------------#
+#----------------------------------------------------------------------------#
 Rbias<-abs(c(mean(CS_mle)-CS0,mean(CS_mps)-CS0,mean(CS_bys1)-CS0,mean(CS_bys2)-CS0,mean(CS_bys3)-CS0,mean(CS_bys1b)-CS0,mean(CS_bys2b)-CS0,mean(CS_bys3b)-CS0))
 Rmse<-c(mean((CS_mle-CS0)^2),mean((CS_mps-CS0)^2),mean((CS_bys1-CS0)^2),mean((CS_bys2-CS0)^2),mean((CS_bys3-CS0)^2),mean((CS_bys1b-CS0)^2),mean((CS_bys2b-CS0)^2),mean((CS_bys3b-CS0)^2))
 CIs<-c(colMeans(ACI),colMeans(ACI_MPS),colMeans(HPD1),colMeans(HPD2))
 CSP<-c(sum(rowMins(ACI)<CS0&rowMaxs(ACI)>CS0)/nrow(ACI),sum(rowMins(ACI_MPS)<CS0&rowMaxs(ACI_MPS)>CS0)/nrow(ACI_MPS),
        sum(rowMins(HPD1)<CS0&rowMaxs(HPD1)>CS0)/nrow(HPD1),sum(rowMins(HPD2)<CS0&rowMaxs(HPD2)>CS0)/nrow(HPD2))
 AL_CP<-c(diff(colMeans(ACI)),CSP[1],diff(colMeans(ACI_MPS)),CSP[2],diff(colMeans(HPD1)),CSP[3],diff(colMeans(HPD2)),CSP[4])
-
 Rslts<-matrix(c(Rbias,Rmse,CIs,AL_CP),ncol=8,nrow=4,byrow=TRUE)
+Rslts
