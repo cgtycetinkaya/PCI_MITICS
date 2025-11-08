@@ -1,0 +1,205 @@
+#Required Packages
+library(lamW);library(matrixStats);library(numDeriv);library(EnvStats)
+#----------------------------------------------------------------------------#
+#----------------------------------------------------------------------------#
+#----------------------------------------------------------------------------#
+BOOT<-500;MCMC<-100000;thinning<-seq(1:1000)*10  #Iteration Numbers
+pp1<--0.5;pp2<-0.5 #Linex-parameters
+
+#Data
+x<-c(1.312,1.314,1.479,1.552,1.700,1.803,1.861,1.865,1.944,1.958,1.966,1.997,2.006,2.021,2.027,2.055,
+     2.063,2.098,2.140,2.179,2.224,2.240,2.253,2.270,2.272,2.274,2.301,2.301,2.339,2.359,2.382,2.382,
+     2.426,2.434,2.435,2.478,2.490,2.511,2.514,2.535,2.554,2.566,2.570,2.586,2.629,2.633,2.642,2.648,
+     2.684,2.697,2.726,2.770,2.773,2.800,2.809,2.818,2.821,2.848,2.880,2.954,3.012,3.067,3.084,3.090,
+     3.096,3.128,3.233,3.433,3.585,3.585);x[28]<-2.3011;x[32]<-2.3821;x[70]<-3.5851
+
+z<-sort(x);n<-length(z);m<-5
+TPT<-0.10 #Right-Censoring Rate For T_2m  0.10 0.20
+L0<-1.25;U0<-3.75;TT<-(U0-L0)/2+L0 #Limit Values of PCI
+
+
+moment <- function(r, alpha, theta) {
+  theta^(r / alpha) / (1 + theta) * (theta * gamma(1 - r / alpha) + gamma(2 - r / alpha))
+}  #Moments for GILD
+Cs_function <- function(params, U = U0, L = L0, TA = TT) {
+  alpha <- params[1]
+  theta <- params[2]
+  
+  mu <- moment(1, alpha, theta)
+  E2 <- moment(2, alpha, theta)
+  E3 <- moment(3, alpha, theta)
+  
+  sigma2 <- E2 - mu^2
+  mu3 <- E3 - 3 * mu * E2 + 2 * mu^3
+  sigma <- sqrt(sigma2)
+  
+  numerator <- min(U - mu, mu - L)
+  denominator <-3*sqrt(sigma2 + (mu - TA)^2 + abs(mu3 / sigma))
+  
+  Cs <- numerator / denominator
+  return(Cs)
+} #PCI Function (CS)
+floor_dec <- function(x, level=1) round(x - 5*10^(-level-1), level) #Function Devide Time Points As MITICS
+loglik<-function(par){
+  aa<-par[1];tt<-par[2]
+  lik<-sum(nu*(log((aa*tt^2)/(1+tt))+log(1+z^(-aa))-(aa+1)*log(z)-tt*z^(-aa)))+
+    sum((1-nu)*(D1*log(((1+tt+tt*T2^(-aa))/(1+tt))*exp(-tt*T2^(-aa))-((1+tt+tt*T1^(-aa))/(1+tt))*exp(-tt*T1^(-aa)))+
+                  D2*log(((1+tt+tt*T4^(-aa))/(1+tt))*exp(-tt*T4^(-aa))-((1+tt+tt*T3^(-aa))/(1+tt))*exp(-tt*T3^(-aa)))+
+                  D3*log(((1+tt+tt*T6^(-aa))/(1+tt))*exp(-tt*T6^(-aa))-((1+tt+tt*T5^(-aa))/(1+tt))*exp(-tt*T5^(-aa)))+
+                  D4*log(((1+tt+tt*T8^(-aa))/(1+tt))*exp(-tt*T8^(-aa))-((1+tt+tt*T7^(-aa))/(1+tt))*exp(-tt*T7^(-aa)))+
+                  D5*log(((1+tt+tt*T10^(-aa))/(1+tt))*exp(-tt*T10^(-aa))-((1+tt+tt*T9^(-aa))/(1+tt))*exp(-tt*T9^(-aa)))+
+                  DM*log(1-((1+tt+tt*T10^(-aa))/(1+tt))*exp(-tt*T10^(-aa)))))
+  return(-lik)
+} #Log-LF
+llik_MPS<-function(par){
+  aa<-par[1];tt<-par[2]
+  lik<-sum((ri+1)*(log(((1+tt+tt*za^(-aa))/(1+tt))*exp(-tt*za^(-aa))-((1+tt+tt*zb^(-aa))/(1+tt))*exp(-tt*zb^(-aa)))))
+  return(-lik)
+} #Log-MPSF
+fb_alpha1<-function(a0){
+  Ttk<-MH_tht[jj-1]
+  xi1<-(((1+Ttk+Ttk*T2^(-a0))*exp(-Ttk*T2^(-a0))-(1+Ttk+Ttk*T1^(-a0))*exp(-Ttk*T1^(-a0)))^D1)*
+    (((1+Ttk+Ttk*T4^(-a0))*exp(-Ttk*T4^(-a0))-(1+Ttk+Ttk*T3^(-a0))*exp(-Ttk*T3^(-a0)))^D2)*
+    (((1+Ttk+Ttk*T6^(-a0))*exp(-Ttk*T6^(-a0))-(1+Ttk+Ttk*T5^(-a0))*exp(-Ttk*T5^(-a0)))^D3)* 
+    (((1+Ttk+Ttk*T8^(-a0))*exp(-Ttk*T8^(-a0))-(1+Ttk+Ttk*T7^(-a0))*exp(-Ttk*T7^(-a0)))^D4)*
+    (((1+Ttk+Ttk*T10^(-a0))*exp(-Ttk*T10^(-a0))-(1+Ttk+Ttk*T9^(-a0))*exp(-Ttk*T9^(-a0)))^D5)*
+    ((1+Ttk-(1+Ttk+Ttk*T10^(-a0))*exp(-Ttk*T10^(-a0)))^DM)
+  (a0^(a+sum(nu)-1))*exp(-b*a0-Ttk*sum(nu*z^(-a0)))*prod((z^(-a0-1)*(1+z^(-a0)))^nu)*prod(xi1^(1-nu))
+} # Posterior of Alpha Based of LF
+fb_theta1<-function(tt0){
+  Aal<-MH_alp[jj]
+  xi2<-(((1+tt0+tt0*T2^(-Aal))*exp(-tt0*T2^(-Aal))-(1+tt0+tt0*T1^(-Aal))*exp(-tt0*T1^(-Aal)))^D1)*
+    (((1+tt0+tt0*T4^(-Aal))*exp(-tt0*T4^(-Aal))-(1+tt0+tt0*T3^(-Aal))*exp(-tt0*T3^(-Aal)))^D2)*
+    (((1+tt0+tt0*T6^(-Aal))*exp(-tt0*T6^(-Aal))-(1+tt0+tt0*T5^(-Aal))*exp(-tt0*T5^(-Aal)))^D3)* 
+    (((1+tt0+tt0*T8^(-Aal))*exp(-tt0*T8^(-Aal))-(1+tt0+tt0*T7^(-Aal))*exp(-tt0*T7^(-Aal)))^D4)*
+    (((1+tt0+tt0*T10^(-Aal))*exp(-tt0*T10^(-Aal))-(1+tt0+tt0*T9^(-Aal))*exp(-tt0*T9^(-Aal)))^D5)*
+    ((1+tt0-(1+tt0+tt0*T10^(-Aal))*exp(-tt0*T10^(-Aal)))^DM)
+  (tt0^(c+2*sum(nu)-1))*prod(xi2^(1-nu))*
+    exp(-tt0*(d+sum(nu*z^(-Aal))))*(1+tt0)^(-sum(nu)-sum((1-nu)*(DM+D1+D2+D3+D4+D5)))
+} # Posterior of Theta Based of LF
+fb_alpha2<-function(aa){
+  ttk<-MH_tt[uu-1]
+  x01<-((1/(1+ri))^(1+ri))*(((1+ttk+ttk*za^(-aa))/(1+ttk))*exp(-ttk*za^(-aa))-((1+ttk+ttk*zb^(-aa))/(1+ttk))*exp(-ttk*zb^(-aa)))^(1+ri)
+  (aa^(a-1))*exp(-b*aa)*prod(x01)
+} # Posterior of Alpha Based of MPSF
+fb_theta2<-function(tt){
+  aal<-MH_aa[uu]
+  x02<-((1/(1+ri))^(1+ri))*(((1+tt+tt*za^(-aal))/(1+tt))*exp(-tt*za^(-aal))-((1+tt+tt*zb^(-aal))/(1+tt))*exp(-tt*zb^(-aal)))^(1+ri)
+  (tt^(c-1))*exp(-d*tt)*prod(x02)
+} # Posterior of Theta Based of MPSF
+
+T2M<-floor_dec(max(z[-c((n-n*TPT+1):n)]),1) #T_2m point 
+TP<-seq(0.5,T2M,length=3*(2*m+1)) #Time Points
+T0<-TP[4];T1<-TP[6];T2<-TP[10];T3<-TP[12];T4<-TP[16];T5<-TP[18];T6<-TP[22];T7<-TP[24];T8<-TP[28];T9<-TP[30];T10<-max(TP) #%30
+#T0<-TP[3];T1<-TP[7];T2<-TP[9];T3<-TP[13];T4<-TP[15];T5<-TP[19];T6<-TP[21];T7<-TP[25];T8<-TP[27];T9<-TP[31];T10<-max(TP) #%60
+
+Ind<-c(which(z>=T0&z<=T1),which(z>=T2&z<=T3),which(z>=T4&z<=T5),which(z>=T6&z<=T7),which(z>=T8&z<=T9))
+nu<-rep(0,n);nu[Ind]<-1
+Ind2<-c(which(z>T1&z<T2));D1<-rep(0,n);D1[Ind2]<-1
+Ind3<-c(which(z>T3&z<T4));D2<-rep(0,n);D2[Ind3]<-1
+Ind4<-c(which(z>T5&z<T6));D3<-rep(0,n);D3[Ind4]<-1
+Ind5<-c(which(z>T7&z<T8));D4<-rep(0,n);D4[Ind5]<-1
+Ind6<-c(which(z>T9&z<T10));D5<-rep(0,n);D5[Ind6]<-1
+Ind7<-c(which(z>T10));DM<-rep(0,n);DM[Ind7]<-1
+
+#----------------------------------------------------------------------------#
+####-----MLE Method--------##########
+#----------------------------------------------------------------------------#
+OPT<-optim(c(fit1$estimate[1],fit1$estimate[2]),loglik,hessian=TRUE) #MLEs
+VAR<-solve(OPT$hessian)
+al_mle<-OPT$par[1];th_mle<-OPT$par[2]
+Mu_mle<-moment(1,al_mle,th_mle)
+Var_mle<-moment(2,al_mle,th_mle)-Mu_mle^2;sd_mle<-sqrt(Var_mle)
+M3_mle<-moment(3,al_mle,th_mle)-3*Mu_mle*moment(2,al_mle,th_mle)+2*Mu_mle^3
+CS_mle<-min((U0-Mu_mle),(Mu_mle-L0))/(3*sqrt(Var_mle+(Mu_mle-TT)^2+abs(M3_mle/sd_mle)))
+Talf<- grad(func = Cs_function, x = c(al_mle, th_mle), method = "Richardson")[1]
+Ttht<- grad(func = Cs_function, x = c(al_mle, th_mle), method = "Richardson")[2]
+Sgm<-Talf^2*VAR[1,1]+Ttht^2*VAR[2,2]+2*Talf*Ttht*VAR[1,2]
+ACI<-c(exp(log(CS_mle)+qnorm(0.025)*sqrt(Sgm)*CS_mle^(-1)),exp(log(CS_mle)-qnorm(0.025)*sqrt(Sgm)*CS_mle^(-1)))
+#----------------------------------------------------------------------------#
+####-----MPS Method--------##########
+#----------------------------------------------------------------------------#
+zo<-c(0.0001,z[which(nu==1)],Inf);cnrd<-z[which(nu==0)];ri<-0
+for(j in 2:(length(diff(zo))+1))  ri[j-1]<-length(which(cnrd>zo[j-1]&cnrd<=zo[j]))
+zb<-zo[-length(zo)];za<-zo[-1] 
+OPT_MPS<-optim(c(al_mle,th_mle),llik_MPS,hessian=TRUE) 
+VAR_MPS<-solve(OPT_MPS$hessian)
+al_mps<-OPT_MPS$par[1];th_mps<-OPT_MPS$par[2]
+Mu_mps<-moment(1,al_mps,th_mps);Var_mps<-moment(2,al_mps,th_mps)-Mu_mps^2;sd_mps<-sqrt(Var_mps)
+M3_mps<-moment(3,al_mps,th_mps)-3*Mu_mps*moment(2,al_mps,th_mps)+2*Mu_mps^3
+CS_mps<-min((U0-Mu_mps),(Mu_mps-L0))/(3*sqrt(Var_mps+(Mu_mps-TT)^2+abs(M3_mps/sd_mps)))
+Talf_m<- grad(func = Cs_function, x = c(al_mps, th_mps), method = "Richardson")[1]
+Ttht_m<- grad(func = Cs_function, x = c(al_mps, th_mps), method = "Richardson")[2]
+Sgm_mps<-Talf_m^2*VAR_MPS[1,1]+Ttht_m^2*VAR_MPS[2,2]+2*Talf_m*Ttht_m*VAR_MPS[1,2]
+ACI_MPS<-c(exp(log(CS_mps)+qnorm(0.025)*sqrt(Sgm_mps)*CS_mps^(-1)),exp(log(CS_mps)-qnorm(0.025)*sqrt(Sgm_mps)*CS_mps^(-1)))
+
+#----------------------------------------------------------------------------#
+####-----Bayesian Inference Based on LF--------##########
+#----------------------------------------------------------------------------#
+CS_gibbs<-CS_Lnx1<-CS_Lnx2<-0;MH_alp<-al_mle;MH_tht<-th_mle;Valp<-sqrt(VAR[1,1]);Vtht<-sqrt(VAR[2,2])
+a<-al_mle;b<-1;c<-th_mle;d<-1 #hyperparameters
+
+for(jj in 2:MCMC){
+  
+  v0a<-MH_alp[jj-1];v1a<-abs(rnorm(1,v0a,Valp));rndma<-runif(1)
+  pm1<-min((fb_alpha1(v1a)*rnorm(1,v0a,Valp))/(fb_alpha1(v0a)*rnorm(1,v1a,Valp)),1)
+  if(rndma<pm1) MH_alp[jj]<-v1a else MH_alp[jj]<-v0a
+  
+  v0b<-MH_tht[jj-1];v1b<-abs(rnorm(1,v0b,Vtht));rndmb<-runif(1)
+  pm2<-min((fb_theta1(v1b)*rnorm(1,v0b,Vtht))/(fb_theta1(v0b)*rnorm(1,v1b,Vtht)),1)
+  if(rndmb<pm2) MH_tht[jj]<-v1b else MH_tht[jj]<-v0b
+  
+  EX1<-moment(1,MH_alp[jj],MH_tht[jj]);EX2<-moment(2,MH_alp[jj],MH_tht[jj]);EX3<-moment(3,MH_alp[jj],MH_tht[jj])
+  Mu_bys1<-EX1;Var_bys1<-EX2-EX1^2;sd_bys1<-sqrt(Var_bys1);M3_bys1<-EX3-3*EX1*EX2+2*EX1^3
+  
+  CS_gibbs[jj]<-min((U0-Mu_bys1),(Mu_bys1-L0))/(3*sqrt(Var_bys1+(Mu_bys1-TT)^2+abs(M3_bys1/sd_bys1)))
+  CS_Lnx1[jj]<-exp(-pp1*CS_gibbs[jj])
+  CS_Lnx2[jj]<-exp(-pp2*CS_gibbs[jj])
+  print(jj)
+  
+}
+
+CS_gibbs<-na.omit(CS_gibbs[thinning])
+CS_Lnx1<-na.omit(CS_Lnx1[thinning])
+CS_Lnx2<-na.omit(CS_Lnx2[thinning])
+CS_bys1<-mean(CS_gibbs)
+CS_bys2<-(-1/pp1)*log(mean(CS_Lnx1))
+CS_bys3<-(-1/pp2)*log(mean(CS_Lnx2))
+HPD1<-quantile(CS_gibbs,c(0.025,0.975))
+
+#----------------------------------------------------------------------------#
+####-----Bayesian Inference Based on MPSF--------##########
+#----------------------------------------------------------------------------#
+MH_aa<-al_mps;MH_tt<-th_mps;CS_gibbs2<-CS_Lnx1b<-CS_Lnx2b<-0;Valp2<-sqrt(VAR_MPS[1,1]);Vtht2<-sqrt(VAR_MPS[2,2])
+
+for(uu in 2:MCMC){
+
+  v0c<-MH_aa[uu-1];v1c<-abs(rnorm(1,v0c,Valp2));rndmc<-runif(1)
+  pm3<-min((fb_alpha2(v1c)*rnorm(1,v0c,Valp2))/(fb_alpha2(v0c)*rnorm(1,v1c,Valp2)),1)
+  if(rndmc<pm3) MH_aa[uu]<-v1c else MH_aa[uu]<-v0c
+  
+  v0d<-MH_tt[uu-1];v1d<-abs(rnorm(1,v0d,Vtht2));rndmd<-runif(1)
+  pm4<-min((fb_theta2(v1d)*rnorm(1,v0d,Vtht2))/(fb_theta2(v0d)*rnorm(1,v1d,Vtht2)),1)
+  if(rndmd<pm4) MH_tt[uu]<-v1d else MH_tt[uu]<-v0d
+  
+  EX1b<-moment(1,MH_aa[uu],MH_tt[uu]);EX2b<-moment(2,MH_aa[uu],MH_tt[uu]);EX3b<-moment(3,MH_aa[uu],MH_tt[uu])
+  Mu_bys2<-EX1b;Var_bys2<-EX2b-EX1b^2;sd_bys2<-sqrt(Var_bys2);M3_bys2<-EX3b-3*EX1b*EX2b+2*EX1b^3
+  
+  CS_gibbs2[uu]<-min((U0-Mu_bys2),(Mu_bys2-L0))/(3*sqrt(Var_bys2+(Mu_bys2-TT)^2+abs(M3_bys2/sd_bys2)))
+  CS_Lnx1b[uu]<-exp(-pp1*CS_gibbs2[uu])
+  CS_Lnx2b[uu]<-exp(-pp2*CS_gibbs2[uu])
+
+  print(uu)
+}
+
+CS_gibbs2<-na.omit(CS_gibbs2[thinning])
+CS_Lnx1b<-na.omit(CS_Lnx1b[thinning])
+CS_Lnx2b<-na.omit(CS_Lnx2b[thinning])
+CS_bys1b<-mean(CS_gibbs2)
+CS_bys2b<-(-1/pp1)*log(mean(CS_Lnx1b))
+CS_bys3b<-(-1/pp2)*log(mean(CS_Lnx2b))
+HPD2<-quantile(CS_gibbs2,c(0.025,0.975))
+
+Rslts<-c(CS_mle,CS_mps,CS_bys1,CS_bys2,CS_bys3,CS_bys1b,CS_bys2b,CS_bys3b)
+CIs<-c(ACI,ACI_MPS,HPD1,HPD2)
+write_xlsx(data.frame(Rslts,CIs),"Real_I.xlsx")
